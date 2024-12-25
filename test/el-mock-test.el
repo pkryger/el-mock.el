@@ -415,8 +415,17 @@
       (should (equal
                (nth 2 (ert-test-failed-backtrace result))
                '(t el-mock-test--signal nil nil))))
-     (t
+     ((not (native-comp-available-p))
       (should (equal
                (nth 2 (ert-test-failed-backtrace result))
                (record 'backtrace-frame t 'el-mock-test--signal
+                       nil nil nil nil nil))))
+     (t
+      (should (equal
+               (nth 2 (ert-test-failed-backtrace result))
+               (record 'backtrace-frame t
+                       (list 'closure
+                           (list 'el-mock-test-var t)
+                           nil
+                         (list 'el-mock-test--signal))
                        nil nil nil nil nil)))))))
