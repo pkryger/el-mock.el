@@ -51,7 +51,7 @@
 ;; Within `with-mock' body (or argument function specified in
 ;; `mock-protect'), you can create a mock and a stub. To create a
 ;; stub, use `stub' macro. To create a mock, use `mock' macro.
-  
+
 ;; For further information: see docstrings.
 ;; [EVAL IT] (describe-function 'with-mock)
 ;; [EVAL IT] (describe-function 'mocklet)
@@ -100,7 +100,7 @@
          (fset funcsym func)
          ;; may be unadviced
          )))))
-    
+
 ;;;; mock setup/teardown
 (defun mock/setup (func-spec value times)
   (let ((funcsym (car func-spec)))
@@ -130,17 +130,47 @@
            do
            (apply #'mock-verify-args args)))
 
+(defun mock-filter-matcher-explainers (args)
+  "Remove explainers from matchers in ARGS."
+  (mapcar (lambda (arg)
+            (if (eq (car-safe arg) '~=)
+                (list (car arg) (cadr arg))
+              arg))
+          args))
+
+(defun mock-verify-arg (expected actual funcsym expected-args actual-args)
+  "Verify that an argument's EXPECTED value is satisfied by the ACTUAL one.
+If the verification fails `mock-error' is signaled with FUNCSYM and a
+list of EXPECTED-ARGS and ACTUAL-ARGS."
+  (unless (eq expected '*)              ; `*' is wildcard argument
+    (cond
+     ((eq (car-safe expected) '~=)
+      (let* ((matcher (cadr expected))
+             (explainer (or (caddr expected)
+                            (and (symbolp matcher)
+                                 (or
+                                  (function-get matcher 'mock-explainer)
+                                  (function-get matcher 'ert-explainer))))))
+        (unless (funcall matcher actual)
+          (signal 'mock-error (append (list (cons funcsym (mock-filter-matcher-explainers expected-args))
+                                            (cons funcsym actual-args)
+                                            :failing-matcher matcher
+                                            :failing-arg actual)
+                                      (when explainer
+                                        (list :explanation (funcall explainer actual))))))))
+     ((let ((expected (eval expected)))
+        (unless (equal expected actual)
+          (signal 'mock-error (list (cons funcsym (mock-filter-matcher-explainers expected-args))
+                                    (cons funcsym actual-args)))))))))
+
+
 (defun mock-verify-args (funcsym expected-args actual-args expected-times)
   (unless (= (length expected-args) (length actual-args))
     (signal 'mock-error (list (cons funcsym expected-args)
                               (cons funcsym actual-args))))
   (cl-loop for e in expected-args
            for a in actual-args
-           do
-           (unless (eq e '*)               ; `*' is wildcard argument
-             (unless (equal (eval e) a)
-               (signal 'mock-error (list (cons funcsym expected-args)
-                                         (cons funcsym actual-args))))))
+           do (mock-verify-arg e a funcsym expected-args actual-args))
   (let ((actual-times (or (get funcsym 'mock-call-count) 0)))
     (and expected-times (/= expected-times actual-times)
          (signal 'mock-error (list (cons funcsym expected-args)
@@ -245,6 +275,21 @@ Synopsis:
 Wildcard:
 The `*' is a special symbol: it accepts any value for that argument position.
 
+ARGS that are of a from (~= MATCHER [EXPLAINER]) are matchers.  When a
+matcher is specified as an expected argument it is used to verify the
+actual value of the argument.  This is as opposed to comparing the
+actual and expected values of an argument with `equal'.  MATCHER is a
+function that is called with a single argument (the actual value of the
+argument).  A match is considered to be successful when MATCHER returns
+non-nil.  Otherwise `mock-error' occurs.  When the optional EXPLAINER is
+specified it is called with the same argument.  EXPLAINER and should
+return a string explaining why the match of the argument has failed.
+When EXPLAINER has not been specified and MATCHER is a symbol with a
+property `mock-explainer' (or `ert-explainer') the value of the property
+is used to explain the match failure.  Both MATCHER and EXPLAINER have
+their closures created when the mock is created to preserve lexical
+context.
+
 ARGS that are not `*' are evaluated when the mock is verified,
 i.e. upon leaving the enclosing `with-mock' form.  ARGS are
 evaluated using dynamic scoping.  The RETURN-VALUE is evaluated
@@ -258,15 +303,47 @@ Example:
   (with-mock
     (mock (g 3))
     (g 7))                                ; (mock-error (g 3) (g 7))
-"
+  (let ((x 13))
+    (with-mock
+      (mock (h (~= (lambda (arg) (<= x arg (+ x 2)))) (~= #\='stringp) => \='pass)
+      (h 14 \"test\")))                   ; => \='pass
+  (let ((x 13))
+    (with-mock
+      (mock (h (~= (lambda (arg) (<= x arg (+ x 2)))
+                   (lambda (arg)
+                     (format \"Expected arg to be between %s and %s but got %s\"
+                             x (+ x 2) arg)))) => \='pass)
+      (h 22)))
+   ; (mock-error (h (~= #f(lambda (arg) [(x 13)] (<= x arg (+ x 2)))))
+   ;             (h 22)
+   ;             :failing-matcher #f(lambda (arg) [(x 13)] (<= x arg (+ x 2)))
+   ;             :failing-arg 22
+   ;             :explanation \"Expected arg to be between 13 and 15 but got 22\")"
   (let* ((times (plist-get rest :times))
          (value (cond ((plist-get rest '=>))
                       ((memq '=> rest) nil)
                       ((null rest) nil)
-                      ((not times) (signal 'mock-syntax-error '("Use `(mock FUNC-SPEC)' or `(mock FUNC-SPEC => RETURN-VALUE)'"))))))
+                      ((not times) (signal 'mock-syntax-error '("Use `(mock FUNC-SPEC)' or `(mock FUNC-SPEC => RETURN-VALUE)'")))))
+         (matchers (apply #'append
+                         (delq nil
+                               (mapcar (lambda (arg)
+                                         (when (eq (car-safe arg) '~=)
+                                           (cdr arg)))
+                                       (cdr func-spec)))))
+         (matchers-var (make-symbol "matchers-var")))
     `(if (not mock--in-mocking)
          (error "Do not use `mock' outside")
-       (mock/setup ',func-spec ',value ,times))))
+       (let ((,matchers-var (list ,@matchers)))
+         (mock/setup (cons ',(car func-spec)
+                           (mapcar (lambda (arg)
+                                     (if (eq (car-safe arg) '~=)
+                                         (cons (car arg)
+                                               (mapcar (lambda (_)
+                                                         (pop ,matchers-var))
+                                                       (cdr arg)))
+                                       arg))
+                                   ',(cdr func-spec)))
+                     ',value ,times)))))
 
 (defmacro not-called (function)    ;FIXME: `mock-' namespace?
   "Create a not-called mock for FUNCTION.
@@ -328,18 +405,36 @@ Spec is arguments of `mock', `not-called' or `stub'.
 * (FUNCTION => RETURN-VALUE)            ; stub which returns RETURN-VALUE
 * (FUNCTION not-called)                 ; not-called FUNCTION
 
+ARGS that are of a from (~= MATCHER [EXPLAINER]) are matchers.  When a
+matcher is specified as an expected argument it is used to verify the
+actual value of the argument.  This is as opposed to comparing the
+actual and expected values of an argument with `equal'.  MATCHER is a
+function that is called with a single argument (the actual value of the
+argument).  A match is considered to be successful when MATCHER returns
+non-nil.  Otherwise `mock-error' occurs.  When the optional EXPLAINER is
+specified it is called with the same argument.  EXPLAINER and should
+return a string explaining why the match of the argument has failed.
+When EXPLAINER has not been specified and MATCHER is a symbol with a
+property `mock-explainer' (or `ert-explainer') the value of the property
+is used to explain the match failure.  Both MATCHER and EXPLAINER have
+their closures created when the mock is created to preserve lexical
+context.
+
 ARGS that are not `*' are evaluated when the mock is verified,
 i.e. upon leaving the enclosing `with-mock' form.  ARGS are
 evaluated using dynamic scoping.  The RETURN-VALUE is evaluated
 when executing the mocked function.
 
 Example:
-  (mocklet (((mock-nil 1))
-            ((mock-1 *) => 1)
-            (stub-nil)
-            (stub-2 => 2))
-    (and (null (mock-nil 1))    (= (mock-1 4) 1)
-         (null (stub-nil \\='any)) (= (stub-2) 2))) ; => t"
+  (let ((x 13))
+    (mocklet (((mock-nil 1))
+              ((mock-1 *) => 1)
+              ((mock-2 (~= (lambda (arg) (<= arg x))) => 1))
+              (stub-nil)
+              (stub-2 => 2))
+      (and (null (mock-nil 1))    (= (mock-1 4) 1)
+                                  (= (mock-2 4) 1)
+           (null (stub-nil \\='any)) (= (stub-2) 2))) ; => t"
   (declare (indent 1))
   `(with-mock
      ,(mock-parse-spec speclist)
