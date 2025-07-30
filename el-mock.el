@@ -341,7 +341,7 @@ Example:
          (null (stub-nil \\='any)) (= (stub-2) 2))) ; => t"
   (declare (indent 1))
   `(with-mock
-     ,(mock-parse-spec spec)
+     ,(mock-parse-spec speclist)
      ,@body))
 
 (define-obsolete-function-alias 'stublet #'mocklet "1.26?")
