@@ -120,11 +120,11 @@
              (me 33))))
 
  (desc "unfulfilled mock")
- (expect (error mock-error '((foom 5) (foom 6)))
+ (expect (error mock-error '((foom 5) (foom 6) :expected-arg 5 :actual-arg 6))
          (with-mock
           (mock (foom 5) => 2)
           (foom 6)))
- (expect (error mock-error '((bar 7) (bar 8)))
+ (expect (error mock-error '((bar 7) (bar 8) :expected-arg 7 :actual-arg 8))
          (with-mock
           (mock (foo 5) => 2)
           (mock (bar 7) => 1)
@@ -137,7 +137,7 @@
           (mock (vi 5) => 2)
           (mock (foo 5) => 2)
           (vi 5)))
- (expect (error mock-error '((f 2) (f 4)))
+ (expect (error mock-error '((f 2) (f 4)  :expected-arg 2 :actual-arg 4))
          (with-mock
           (mock (f 2))                  ;omission of return value
           (f 4)))
@@ -161,7 +161,7 @@
           (mock (f 1 2) => 3)
           (stub hoge => 5)
           (+ (f 1 2) (hoge 'a))))
- (expect (error mock-error '((f 1 2) (f 3 4)))
+ (expect (error mock-error '((f 1 2) (f 3 4) :expected-arg 1 :actual-arg 3))
          (with-mock
           (mock (f 1 2) => 3)
           (stub hoge => 5)
@@ -355,7 +355,7 @@
           (mock (foo *) :times 2)
           (foo 1)
           'ok))
- (expect (error mock-error '((foo 1) (foo 2)))
+ (expect (error mock-error '((foo 1) (foo 2) :expected-arg 1 :actual-arg 2))
          (with-mock
           (mock (foo 1) :times 2)
           (foo 2)
@@ -374,7 +374,7 @@
           (mock (foo *) => 2 :times 2)
           (foo 1)
           'ok))
- (expect (error mock-error '((foo 1) (foo 2)))
+ (expect (error mock-error '((foo 1) (foo 2) :expected-arg 1 :actual-arg 2))
          (with-mock
           (mock (foo 1) => 2 :times 2)
           (foo 2)
@@ -389,7 +389,7 @@
    (with-mock
      (mock (foo 1))
      (foo))))
- 
+
 
 (defun el-mock-test--signal ()
   (error "Foo"))

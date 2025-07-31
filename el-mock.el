@@ -161,7 +161,9 @@ list of EXPECTED-ARGS and ACTUAL-ARGS."
      ((let ((expected (eval expected)))
         (unless (equal expected actual)
           (signal 'mock-error (list (cons funcsym (mock-filter-matcher-explainers expected-args))
-                                    (cons funcsym actual-args)))))))))
+                                    (cons funcsym actual-args)
+                                    :expected-arg expected
+                                    :actual-arg actual))))))))
 
 
 (defun mock-verify-args (funcsym expected-args actual-args expected-times)
@@ -302,7 +304,10 @@ Example:
     (and (= (f 9 2) 3) (null (g 3))))     ; => t
   (with-mock
     (mock (g 3))
-    (g 7))                                ; (mock-error (g 3) (g 7))
+    (g 7))                                ; (mock-error (g 3)
+                                          ;             (g 7)
+                                          ;             :expected-arg 3
+                                          ;             :actual-arg 7)
   (let ((x 13))
     (with-mock
       (mock (h (~= (lambda (arg) (<= x arg (+ x 2)))) (~= #\='stringp) => \='pass)
