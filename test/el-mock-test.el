@@ -24,6 +24,21 @@
 (defun el-mock-test--wrap-retval (orig-fun &rest args)
   (concat "[" (apply orig-fun args) "]"))
 
+(defun el-mock-test--never-match-1 (arg)
+  nil)
+
+(function-put #'el-mock-test--never-match-1
+              'mock-explainer
+              (lambda (arg)
+                (format "never-match-1 %S" arg)))
+
+(defun el-mock-test--never-match-2 (arg)
+  nil)
+(function-put #'el-mock-test--never-match-2
+              'ert-explainer
+              (lambda (arg)
+                (format "never-match-2 %S" arg)))
+
 (expectations
  (desc "stub setup/teardown")
  (expect 2
@@ -388,8 +403,159 @@
  (expect (error mock-error '((foo 1) (foo)))
          (with-mock
            (mock (foo 1))
-           (foo))))
+           (foo)))
 
+ (desc "matchers")
+ (expect 'ok
+         (with-mock
+           (mock (foo (~= #'stringp)) => 'ok)
+           (foo "is it ok?")))
+
+ (expect 'ok
+         (with-mock
+           (mock (foo (~= #'stringp #'null)
+                      (~= #'numberp #'null)
+                      (~= #'consp #'null))
+                 => 'ok)
+           (foo "a string" 1 (cons 'bar 'baz))))
+
+ (expect 'ok
+         (with-mock
+           (mock (foo (~= (lambda (arg) (<= 1 arg 3)))) => 'ok)
+           (foo 2)))
+
+ (expect 'ok
+         (let ((x 3))
+           (with-mock
+             (mock (foo (~= (lambda (arg) (< x arg (+ x 2))))) => 'ok)
+             (foo 4))))
+
+ (expect 'ok
+         (with-mock
+           (mock (foo (~= (let ((x 5))
+                            (lambda (arg) (< x arg (+ x 2))))))
+                 => 'ok)
+           (foo 6)))
+
+ (expect 'ok
+         (with-mock
+           (let ((x 7))
+             (mock (foo (~= (lambda (arg) (< x arg (+ x 2))))) => 'ok)
+             (foo 8))))
+
+ (expect 'ok
+         (with-mock
+           (let ((x 9))
+             (mock (foo (~= (lambda (arg) (< x arg (+ x 2))))) => 'ok))
+           (foo 10)))
+
+ (expect 'ok
+         (let ((x 11))
+           (with-mock
+             (mock (foo (~= (let ((y (+ x 2)))
+                              (lambda (arg) (< x arg y)))))
+                   => 'ok)
+             (foo 12))))
+
+ (expect (error mock-error '((foo (~= stringp))
+                             (foo 13)
+                             :failing-matcher stringp
+                             :failing-arg 13))
+         (with-mock
+           (mock (foo (~= #'stringp)) => 'ok)
+           (foo 13)))
+
+ (expect (error mock-error '((foo (~= stringp))
+                             (foo 14)
+                             :failing-matcher stringp
+                             :failing-arg 14
+                             :explanation "Expected a string but got 14"))
+         (with-mock
+           (mock (foo (~= #'stringp (lambda (arg)
+                                      (format "Expected a string but got %S" arg))))
+                 => 'ok)
+           (foo 14)))
+
+ (expect (error mock-error '((foo (~= el-mock-test--never-match-1))
+                             (foo 15)
+                             :failing-matcher el-mock-test--never-match-1
+                             :failing-arg 15
+                             :explanation "never-match-1 15"))
+         (with-mock
+           (mock (foo (~= #'el-mock-test--never-match-1))
+                 => 'ok)
+           (foo 15)))
+
+ (expect (error mock-error '((foo (~= el-mock-test--never-match-2))
+                             (foo 16)
+                             :failing-matcher el-mock-test--never-match-2
+                             :failing-arg 16
+                             :explanation "never-match-2 16"))
+         (with-mock
+           (mock (foo (~= #'el-mock-test--never-match-2))
+                 => 'ok)
+           (foo 16)))
+
+ (expect 'ok
+         (mocklet (((foo (~= #'stringp)) => 'ok))
+           (foo "is it still ok?")))
+
+ (expect 'ok
+         (mocklet (((foo (~= #'stringp #'null)
+                         (~= #'numberp #'null)
+                         (~= #'consp #'null))
+                    => 'ok))
+           (foo "another string" 21 (cons 'bar 'baz))))
+
+ (expect 'ok
+         (mocklet (((foo (~= (lambda (arg) (<= 21 arg 23)))) => 'ok))
+           (foo 22)))
+
+ (expect 'ok
+         (let ((x 23))
+           (mocklet (((foo (~= (lambda (arg) (< x arg (+ x 2))))) => 'ok))
+             (foo 24))))
+
+ (expect 'ok
+         (mocklet (((foo (~= (let ((x 25))
+                               (lambda (arg) (< x arg (+ x 2))))))
+                    => 'ok))
+           (foo 26)))
+
+ (expect (error mock-error '((foo (~= stringp))
+                             (foo 27)
+                             :failing-matcher stringp
+                             :failing-arg 27))
+         (mocklet (((foo (~= #'stringp)) => 'ok))
+           (foo 27)))
+
+ (expect (error mock-error '((foo (~= stringp))
+                             (foo 28)
+                             :failing-matcher stringp
+                             :failing-arg 28
+                             :explanation "Expected a string but got 28"))
+         (mocklet (((foo (~= #'stringp (lambda (arg)
+                                         (format "Expected a string but got %S" arg))))
+                    => 'ok))
+           (foo 28)))
+
+ (expect (error mock-error '((foo (~= el-mock-test--never-match-1))
+                             (foo 29)
+                             :failing-matcher el-mock-test--never-match-1
+                             :failing-arg 29
+                             :explanation "never-match-1 29"))
+         (mocklet (((foo (~= #'el-mock-test--never-match-1))
+                    => 'ok))
+           (foo 29)))
+
+ (expect (error mock-error '((foo (~= el-mock-test--never-match-2))
+                             (foo 30)
+                             :failing-matcher el-mock-test--never-match-2
+                             :failing-arg 30
+                             :explanation "never-match-2 30"))
+         (mocklet (((foo (~= #'el-mock-test--never-match-2))
+                    => 'ok))
+           (foo 30))))
 
 (defun el-mock-test--signal ()
   (error "Foo"))
