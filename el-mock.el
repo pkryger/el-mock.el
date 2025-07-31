@@ -206,21 +206,20 @@ wrap test method around this function."
 
 ;;;; message hack
 (defun mock-suppress-redefinition-message (func)
-  "Erase \"ad-handle-definition: `%s' got redefined\" message."
+  "Erase \"ad-handle-definition: `FUNC' got redefined\" message."
   (funcall func))
 (define-error 'mock-syntax-error "Mock syntax error")
 
 ;;;; User interface
 (defmacro with-mock (&rest body)
-  "Execute the forms in BODY. You can use `mock' and `stub' in BODY.
+  "Execute the forms in BODY containing `mock' and `stub' forms.
 The value returned is the value of the last form in BODY.
 After executing BODY, mocks and stubs are guaranteed to be released.
 
 Example:
   (with-mock
     (stub fooz => 2)
-    (fooz 9999))                  ; => 2
-"
+    (fooz 9999))                  ; => 2"
   (declare (indent 0))
   `(mock-protect
     (lambda () ,@body)))
@@ -228,6 +227,7 @@ Example:
 (define-obsolete-function-alias 'with-stub #'with-mock "1.26?")
 
 (defmacro stub (function &rest rest)    ;FIXME: `mock-' namespace?
+  ;; checkdoc-params: (rest)
   "Create a stub for FUNCTION.
 Stubs are temporary functions which accept any arguments
 and return constant value.
@@ -245,8 +245,7 @@ Example:
   (with-mock
     (stub foo)
     (stub bar => 1)
-    (and (null (foo)) (= (bar 7) 1)))     ; => t
-"
+    (and (null (foo)) (= (bar 7) 1)))     ; => t"
   (let ((value (cond ((plist-get rest '=>))
                      ((memq '=> rest) nil)
                      ((null rest) nil)
@@ -256,7 +255,8 @@ Example:
        (mock--stub-setup ',function (lambda (&rest _) ,value)))))
 
 (defmacro mock (func-spec &rest rest)
-    "Create a mock for function described by FUNC-SPEC.
+    ;; checkdoc-params: (rest)
+  "Create a mock for function described by FUNC-SPEC.
 Mocks are temporary functions which accept specified arguments
 and return constant value.
 If mocked functions are not called or called by different arguments,
@@ -366,8 +366,7 @@ Example:
     t)     ; => t
   (with-mock
     (not-called g)
-    (g 7)) ; => (mock-error called)
-"
+    (g 7)) ; => (mock-error called)"
   (let ()
     `(if (not mock--in-mocking)
          (error "Do not use `not-called' outside")
