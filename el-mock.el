@@ -76,6 +76,7 @@
 
 ;;;; stub setup/teardown
 (defun mock--stub-setup (funcsym function)
+  "Setup FUNCTION as as stub for FUNCSYM."
   (mock-suppress-redefinition-message
    (lambda ()
      (when (fboundp funcsym)
@@ -103,6 +104,7 @@
 
 ;;;; mock setup/teardown
 (defun mock/setup (func-spec value times)
+  "Setup FUNC-SPEC to be a mock returning VALUE and to be called number of TIMES."
   (let ((funcsym (car func-spec)))
     (put funcsym 'mock-call-count 0)
     (cl-pushnew funcsym mock--mocked-functions)
@@ -123,6 +125,7 @@
 ;;;; mock verify
 (define-error 'mock-error "Mock error")
 (defun mock-verify ()
+  "Verify expectations on mocks."
   (cl-loop for f in mock--mocked-functions
            when (equal 0 (get f 'mock-call-count))
            do (signal 'mock-error (list 'not-called f)))
@@ -167,6 +170,9 @@ list of EXPECTED-ARGS and ACTUAL-ARGS."
 
 
 (defun mock-verify-args (funcsym expected-args actual-args expected-times)
+  "Verify that EXPECTED-ARGS are satisfied by ACTUAL-ARGS.
+Also verify that the FUNCSYM has been called EXPECTED-TIMES.  If
+verification fails `mock-error' is signaled."
   (unless (= (length expected-args) (length actual-args))
     (signal 'mock-error (list (cons funcsym expected-args)
                               (cons funcsym actual-args))))
@@ -375,12 +381,13 @@ Example:
 
 
 (defun mock-parse-spec (spec)
+  "Parse a `mocklet' SPEC to series of `mock's and `stub's."
   (cons 'progn
         (mapcar (lambda (args)
                   (if (eq (cadr args) 'not-called)
                       `(not-called ,(car args))
                     (cons (if (consp (car args)) 'mock 'stub)
-                        args)))
+                          args)))
                 spec)))
 
 (defun mocklet-function (spec body-func)
