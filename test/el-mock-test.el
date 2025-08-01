@@ -1,6 +1,10 @@
-;; -*- lexical-binding: t; -*-
+;;; el-mock-test.el --- Tests for el-mock.el  -*- lexical-binding: t; -*-
+
+
+;;; Code:
 
 (require 'el-mock)
+(require 'ert-expectations)
 
 (declare-function foo "el-mock-test")
 (declare-function foox "el-mock-test")
@@ -20,19 +24,22 @@
 (declare-function fugaga "el-mock-test")
 
 (defvar el-mock-test-var)
+(defvar mock-error)
 
 (defun el-mock-test--wrap-retval (orig-fun &rest args)
+  "Wrap value of a call of ORIG-FUN with ARGS."
   (concat "[" (apply orig-fun args) "]"))
 
-(defun el-mock-test--never-match-1 (arg)
+(defun el-mock-test--never-match-1 (_)
+  "Return nil, but the symbol has `mock-explainer' propoerty."
   nil)
-
 (function-put #'el-mock-test--never-match-1
               'mock-explainer
               (lambda (arg)
                 (format "never-match-1 %S" arg)))
 
-(defun el-mock-test--never-match-2 (arg)
+(defun el-mock-test--never-match-2 (_)
+  "Return nil, but the symbol has `ert-explainer' property."
   nil)
 (function-put #'el-mock-test--never-match-2
               'ert-explainer
@@ -42,12 +49,12 @@
 (expectations
  (desc "stub setup/teardown")
  (expect 2
-         (stub/setup 'foo 2)
-         (prog1
-             (foo 1 2 3)
-           (stub/teardown 'foo)))
+   (mock--stub-setup 'foo (lambda (&rest _) 2))
+   (prog1
+       (foo 1 2 3)
+     (stub/teardown 'foo)))
  (expect nil
-         (stub/setup 'foox 2)
+         (mock--stub-setup 'foox (lambda (&rest _) 2))
          (foox 1 2 3)
          (stub/teardown 'foox)
          (fboundp 'foox))
@@ -159,8 +166,8 @@
          (with-mock
            (mock (f 2))                 ;omission of return value
            (f 4)))
- (expect (error-message "error-in-test1")
-         (defun test1 () (error "error-in-test1"))
+ (expect (error-message "Error-in-test1")
+         (defun test1 () (error "Error-in-test1"))
          (with-mock
            (mock (test2))
            (test1)))
@@ -665,12 +672,12 @@
            (foo 30 30))))
 
 (defun el-mock-test--signal ()
+  "Signal error with \"Foo\"."
   (error "Foo"))
 
 
 (ert-deftest preserve-stacktrace ()
-  "Test that mocking doesn’t mess with the backtrace recorded by
-‘ert-run-test’."
+  "Ensure backtrace recorded by ‘ert-run-test’ is not messed up by mocking."
   (let ((result (ert-run-test
                  (make-ert-test
                   :body (lambda ()
@@ -711,3 +718,7 @@
                                nil
                                (list 'el-mock-test--signal))
                          nil nil nil nil nil))))))))
+
+(provide 'el-mock-test)
+
+;;; el-mock-test.el ends here
