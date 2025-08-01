@@ -131,7 +131,10 @@
                     (expected-times (get funcsym 'mock-expected-call-count)))
                 (cond
                  ((= 0 actual-times)
-                   (signal 'mock-error (list 'not-called funcsym)))
+                   (signal 'mock-error (list 'not-called
+                                             (cons funcsym
+                                                   (mock-filter-matcher-explainers
+                                                    (get funcsym 'mock-expected-args))))))
                  ((and
                    (numberp expected-times)
                    (not (= expected-times actual-times)))

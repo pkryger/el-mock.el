@@ -153,10 +153,10 @@
            (mock (foo 5) => 2)
            (mock (bar 7) => 1)
            (+ (foo 5) (bar 8))))
- (expect (error mock-error '(not-called foo))
+ (expect (error mock-error '(not-called (foo 5)))
          (with-mock
            (mock (foo 5) => 2)))
- (expect (error mock-error '(not-called foo))
+ (expect (error mock-error '(not-called (foo 5)))
          (with-mock
            (mock (vi 5) => 2)
            (mock (foo 5) => 2)
@@ -387,7 +387,7 @@
            (mock (foo 1) :times 2)
            (foo 2)
            'ok))
- (expect (error mock-error '(not-called foo))
+ (expect (error mock-error '(not-called (foo 1)))
          (with-mock
            (mock (foo 1) :times 2)
            'ok))
@@ -407,7 +407,7 @@
            (mock (foo 1) => 2 :times 2)
            (foo 2)
            'ok))
- (expect (error mock-error '(not-called foo))
+ (expect (error mock-error '(not-called (foo 1)))
          (with-mock
            (mock (foo 1) => 2 :times 2)
            'ok))
