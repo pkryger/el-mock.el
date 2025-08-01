@@ -414,7 +414,8 @@
       (should (equal
                (nth 2 (ert-test-failed-backtrace result))
                '(t el-mock-test--signal nil nil))))
-     ((not (native-comp-available-p))
+     ((or (not (fboundp 'native-comp-available-p)) ;; Emacs 27 doesn't have native compilation
+          (not (native-comp-available-p)))
       (should (equal
                (nth 2 (ert-test-failed-backtrace result))
                (record 'backtrace-frame t 'el-mock-test--signal
