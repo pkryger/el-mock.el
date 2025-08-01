@@ -173,11 +173,16 @@ list of EXPECTED-ARGS and ACTUAL-ARGS."
   "Verify that EXPECTED-ARGS are satisfied by ACTUAL-ARGS.
 Also verify that the FUNCSYM has been called EXPECTED-TIMES.  If
 verification fails `mock-error' is signaled."
-  (unless (= (length expected-args) (length actual-args))
-    (signal 'mock-error (list (cons funcsym expected-args)
-                              (cons funcsym actual-args))))
+  (let ((up-to (cl-position '** expected-args))
+        (actual (length actual-args)))
+    (unless (if up-to
+                (<= up-to actual)
+              (= (length expected-args) actual))
+      (signal 'mock-error (list (cons funcsym expected-args)
+                                (cons funcsym actual-args)))))
   (cl-loop for e in expected-args
            for a in actual-args
+           until (eq e '**)
            do (mock-verify-arg e a funcsym expected-args actual-args))
   (let ((actual-times (or (get funcsym 'mock-call-count) 0)))
     (and expected-times (/= expected-times actual-times)
@@ -280,8 +285,9 @@ Synopsis:
   Create a FUNCTION mock which returns RETURN-VALUE.
   FUNCTION must be called N times.
 
-Wildcard:
-The `*' is a special symbol: it accepts any value for that argument position.
+ARGS that are of a form `*' and `**' are wildcards.  The wildcard `*'
+accepts any value for that argument position.  The wildcard `**' accepts
+any number of arguments (including 0), effectively suppressing any further ARGS.
 
 ARGS that are of a from (~= MATCHER [EXPLAINER]) are matchers.  When a
 matcher is specified as an expected argument it is used to verify the
@@ -416,6 +422,10 @@ Spec is arguments of `mock', `not-called' or `stub'.
 * (FUNCTION => RETURN-VALUE)            ; stub which returns RETURN-VALUE
 * (FUNCTION not-called)                 ; not-called FUNCTION
 
+ARGS that are of a form `*' and `**' are wildcards.  The wildcard `*'
+accepts any value for that argument position.  The wildcard `**' accepts
+any number of arguments (including 0), effectively suppressing any further ARGS.
+
 ARGS that are of a from (~= MATCHER [EXPLAINER]) are matchers.  When a
 matcher is specified as an expected argument it is used to verify the
 actual value of the argument.  This is as opposed to comparing the
@@ -431,20 +441,22 @@ is used to explain the match failure.  Both MATCHER and EXPLAINER have
 their closures created when the mock is created to preserve lexical
 context.
 
-ARGS that are not `*' are evaluated when the mock is verified,
-i.e. upon leaving the enclosing `with-mock' form.  ARGS are
-evaluated using dynamic scoping.  The RETURN-VALUE is evaluated
-when executing the mocked function.
+ARGS that are neither `*' nor `**' are evaluated when the mock is
+verified, i.e. upon leaving the enclosing `with-mock' form.  ARGS are
+evaluated using dynamic scoping.  The RETURN-VALUE is evaluated when
+executing the mocked function.
 
 Example:
   (let ((x 13))
     (mocklet (((mock-nil 1))
               ((mock-1 *) => 1)
-              ((mock-2 (~= (lambda (arg) (<= arg x))) => 1))
+              ((mock-2 **) => 1 :times 2)
+              ((mock-3 (~= (lambda (arg) (<= arg x))) => 1))
               (stub-nil)
               (stub-2 => 2))
       (and (null (mock-nil 1))    (= (mock-1 4) 1)
-                                  (= (mock-2 4) 1)
+           (= (mock-2 1 2 3) 1)   (= (mock-2 \='any) 1)
+           (= (mock-3 4) 1)
            (null (stub-nil \\='any)) (= (stub-2) 2))) ; => t"
   (declare (indent 1))
   `(with-mock

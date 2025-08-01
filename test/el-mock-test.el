@@ -405,6 +405,76 @@
            (mock (foo 1))
            (foo)))
 
+ (desc "wildcards")
+ (expect 'ok
+         (with-mock
+           (mock (foo *) => 'ok :times 2)
+           (foo 1)
+           (foo 'any)))
+ (expect 'ok
+         (with-mock
+           (mock (foo 1 * 3) => 'ok :times 2)
+           (foo 1 2 3)
+           (foo 1 'any 3)))
+ (expect (error mock-error '((foo *) (foo 1 2)))
+         (with-mock
+           (mock (foo *) => 'ok)
+           (foo 1 2)))
+ (expect (error mock-error '((foo *) (foo)))
+         (with-mock
+           (mock (foo *) => 'ok)
+           (foo)))
+ (expect (error mock-error '((foo 1 * 3) (foo 2 2 2) :expected-arg 1 :actual-arg 2))
+         (with-mock
+           (mock (foo 1 * 3) => 'ok)
+           (foo 2 2 2)))
+ (expect 'ok
+         (with-mock
+           (mock (foo **) => 'ok :times 3)
+           (foo)
+           (foo 'any)
+           (foo 'any 'any)))
+ (expect 'ok
+         (with-mock
+           (mock (foo 1 **) => 'ok :times 3)
+           (foo 1)
+           (foo 1 2)
+           (foo 1 'any 3)))
+ (expect (error mock-error '((foo 1 **) (foo 2 2) :expected-arg 1 :actual-arg 2))
+         (with-mock
+           (mock (foo 1 **) => 'ok)
+           (foo 2 2)))
+ (expect 'ok
+         (mocklet (((foo *) => 'ok :times 2))
+           (foo 1)
+           (foo 'any)))
+ (expect 'ok
+         (mocklet (((foo 1 * 3) => 'ok :times 2))
+           (foo 1 2 3)
+           (foo 1 'any 3)))
+ (expect (error mock-error '((foo *) (foo 1 2)))
+         (mocklet (((foo *) => 'ok))
+           (foo 1 2)))
+ (expect (error mock-error '((foo *) (foo)))
+         (mocklet (((foo *) => 'ok))
+           (foo)))
+ (expect (error mock-error '((foo 1 * 3) (foo 2 2 2) :expected-arg 1 :actual-arg 2))
+         (mocklet (((foo 1 * 3) => 'ok))
+           (foo 2 2 2)))
+ (expect 'ok
+         (mocklet (((foo **) => 'ok :times 3))
+           (foo)
+           (foo 'any)
+           (foo 'any 'any)))
+ (expect 'ok
+         (mocklet (((foo 1 **) => 'ok :times 3))
+           (foo 1)
+           (foo 1 2)
+           (foo 1 'any 3)))
+ (expect (error mock-error '((foo 1 **) (foo 2 2) :expected-arg 1 :actual-arg 2))
+         (mocklet (((foo 1 **) => 'ok))
+           (foo 2 2)))
+
  (desc "matchers")
  (expect 'ok
          (with-mock
