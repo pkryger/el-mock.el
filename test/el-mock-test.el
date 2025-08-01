@@ -421,11 +421,20 @@
                (record 'backtrace-frame t 'el-mock-test--signal
                        nil nil nil nil nil))))
      (t
-      (should (equal
-               (nth 2 (ert-test-failed-backtrace result))
-               (record 'backtrace-frame t
-                       (list 'closure
-                           (list 'el-mock-test-var t)
-                           nil
-                         (list 'el-mock-test--signal))
-                       nil nil nil nil nil)))))))
+      ;; Since Emacs 30 with native compilation the test function is wrapped
+      ;; in an `interpreted-function'.
+      (if (fboundp 'interpreted-function-p)
+          (let* ((frame (nth 2 (ert-test-failed-backtrace result)))
+                 (fun (backtrace-frame-fun frame)))
+            (should (interpreted-function-p fun))
+            (should (equal (aref fun 1) '((el-mock-test--signal)))))
+        ;; Up to Emacs 29 with native compilation the test function is wrapped
+        ;; in a `closure'.
+        (should (equal
+                 (nth 2 (ert-test-failed-backtrace result))
+                 (record 'backtrace-frame t
+                         (list 'closure
+                               (list 'el-mock-test-var t)
+                               nil
+                               (list 'el-mock-test--signal))
+                         nil nil nil nil nil))))))))
