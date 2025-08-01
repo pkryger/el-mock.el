@@ -71,7 +71,6 @@
 
 (defvar mock--stubbed-functions nil)
 (defvar mock--mocked-functions nil)
-(defvar mock-verify-list nil)
 (defvar mock--in-mocking nil)
 
 ;;;; stub setup/teardown
@@ -106,13 +105,14 @@
 (defun mock/setup (func-spec value times)
   "Setup FUNC-SPEC to be a mock returning VALUE and to be called number of TIMES."
   (let ((funcsym (car func-spec)))
-    (put funcsym 'mock-call-count 0)
+    (put funcsym 'mock-actual-call-count 0)
+    (put funcsym 'mock-expected-call-count times)
+    (put funcsym 'mock-expected-args (cdr func-spec))
     (cl-pushnew funcsym mock--mocked-functions)
     (mock--stub-setup funcsym
                       `(lambda (&rest actual-args)
-                         (cl-incf (get ',funcsym 'mock-call-count))
-                         (add-to-list 'mock-verify-list
-                                      (list ',funcsym ',(cdr func-spec) actual-args ,times))
+                         (cl-incf (get ',funcsym 'mock-actual-call-count))
+                         (mock-verify-args ',funcsym ',(cdr func-spec) actual-args)
                          ,value))))
 
 (defun not-called/setup (funcsym)
@@ -125,13 +125,20 @@
 ;;;; mock verify
 (define-error 'mock-error "Mock error")
 (defun mock-verify ()
-  "Verify expectations on mocks."
-  (cl-loop for f in mock--mocked-functions
-           when (equal 0 (get f 'mock-call-count))
-           do (signal 'mock-error (list 'not-called f)))
-  (cl-loop for args in mock-verify-list
-           do
-           (apply #'mock-verify-args args)))
+  "Verify call count expectations on mocks."
+  (cl-loop for funcsym in mock--mocked-functions
+           do (let ((actual-times (or (get funcsym 'mock-actual-call-count) 0))
+                    (expected-times (get funcsym 'mock-expected-call-count)))
+                (cond
+                 ((= 0 actual-times)
+                   (signal 'mock-error (list 'not-called funcsym)))
+                 ((and
+                   (numberp expected-times)
+                   (not (= expected-times actual-times)))
+                  (signal 'mock-error (list (cons funcsym
+                                                  (get funcsym 'mock-expected-args))
+                                            :expected-times expected-times
+                                            :actual-times actual-times)))))))
 
 (defun mock-filter-matcher-explainers (args)
   "Remove explainers from matchers in ARGS."
@@ -162,7 +169,7 @@ list of EXPECTED-ARGS and ACTUAL-ARGS."
                                             :failing-arg actual)
                                       (when explainer
                                         (list :explanation (funcall explainer actual))))))))
-     ((let ((expected (eval expected)))
+     ((let ((expected (eval expected t)))
         (unless (equal expected actual)
           (signal 'mock-error (list (cons funcsym (mock-filter-matcher-explainers expected-args))
                                     (cons funcsym actual-args)
@@ -171,7 +178,7 @@ list of EXPECTED-ARGS and ACTUAL-ARGS."
                                     :actual-arg actual))))))))
 
 
-(defun mock-verify-args (funcsym expected-args actual-args expected-times)
+(defun mock-verify-args (funcsym expected-args actual-args)
   "Verify that EXPECTED-ARGS are satisfied by ACTUAL-ARGS.
 Also verify that the FUNCSYM has been called EXPECTED-TIMES.  If
 verification fails `mock-error' is signaled."
@@ -194,12 +201,8 @@ verification fails `mock-error' is signaled."
            for a in actual-args
            for i below (length expected-args)
            until (eq e '**)
-           do (mock-verify-arg e a i funcsym expected-args actual-args))
-  (let ((actual-times (or (get funcsym 'mock-call-count) 0)))
-    (and expected-times (/= expected-times actual-times)
-         (signal 'mock-error (list (cons funcsym expected-args)
-                                   :expected-times expected-times
-                                   :actual-times actual-times)))))
+           do (mock-verify-arg e a i funcsym expected-args actual-args)))
+
 ;;;; stub/mock provider
 (defun mock-protect (body-fn)
   "The substance of `with-mock' macro.
@@ -208,13 +211,12 @@ Prepare for mock/stub, call BODY-FN, and teardown mock/stub.
 For developer:
 When you adapt Emacs Lisp Mock to a testing framework,
 wrap test method around this function."
-  (let (mock-verify-list
-        mock--stubbed-functions
+  (let (mock--stubbed-functions
         mock--mocked-functions
         (mock--in-mocking t)
         (any-error t))
     ;; (setplist 'mock-original-func nil)
-    ;; (setplist 'mock-call-count nil)
+    ;; (setplist 'mock-actual-call-count nil)
     (unwind-protect
         (prog1
             (funcall body-fn)
