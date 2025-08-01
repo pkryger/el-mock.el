@@ -175,13 +175,21 @@ list of EXPECTED-ARGS and ACTUAL-ARGS."
   "Verify that EXPECTED-ARGS are satisfied by ACTUAL-ARGS.
 Also verify that the FUNCSYM has been called EXPECTED-TIMES.  If
 verification fails `mock-error' is signaled."
-  (let ((up-to (cl-position '** expected-args))
-        (actual (length actual-args)))
-    (unless (if up-to
-                (<= up-to actual)
-              (= (length expected-args) actual))
-      (signal 'mock-error (list (cons funcsym expected-args)
-                                (cons funcsym actual-args)))))
+  (let ((at-least (cl-position '** expected-args))
+        (actual (length actual-args))
+        (expected (length expected-args)))
+    (unless (if at-least
+                (<= at-least actual)
+              (= expected actual))
+      (signal 'mock-error (append
+                           (list (cons funcsym expected-args)
+                                 (cons funcsym actual-args)
+                                 :expected-args-number)
+                           (if at-least
+                               (list 'at-least at-least)
+                             (list expected))
+                           (list
+                            :actual-args-number actual)))))
   (cl-loop for e in expected-args
            for a in actual-args
            for i below (length expected-args)

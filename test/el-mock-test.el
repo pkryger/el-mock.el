@@ -406,7 +406,8 @@
            'ok))
 
  (desc "too few arguments")
- (expect (error mock-error '((foo 1) (foo)))
+ (expect (error mock-error '((foo 1) (foo)
+                             :expected-args-number 1 :actual-args-number 0))
          (with-mock
            (mock (foo 1))
            (foo)))
@@ -422,11 +423,13 @@
            (mock (foo 1 * 3) => 'ok :times 2)
            (foo 1 2 3)
            (foo 1 'any 3)))
- (expect (error mock-error '((foo *) (foo 1 2)))
+ (expect (error mock-error '((foo *) (foo 1 2)
+                             :expected-args-number 1 :actual-args-number 2))
          (with-mock
            (mock (foo *) => 'ok)
            (foo 1 2)))
- (expect (error mock-error '((foo *) (foo)))
+ (expect (error mock-error '((foo *) (foo)
+                             :expected-args-number 1 :actual-args-number 0))
          (with-mock
            (mock (foo *) => 'ok)
            (foo)))
@@ -457,6 +460,11 @@
          (with-mock
            (mock (foo 1 **) => 'ok)
            (foo 2 2)))
+ (expect (error mock-error '((foo 1 **) (foo)
+                             :expected-args-number at-least 1 :actual-args-number 0))
+         (with-mock
+           (mock (foo 1 **) => 'ok)
+           (foo)))
  (expect 'ok
          (mocklet (((foo *) => 'ok :times 2))
            (foo 1)
@@ -465,10 +473,12 @@
          (mocklet (((foo 1 * 3) => 'ok :times 2))
            (foo 1 2 3)
            (foo 1 'any 3)))
- (expect (error mock-error '((foo *) (foo 1 2)))
+ (expect (error mock-error '((foo *) (foo 1 2)
+                             :expected-args-number 1 :actual-args-number 2))
          (mocklet (((foo *) => 'ok))
            (foo 1 2)))
- (expect (error mock-error '((foo *) (foo)))
+ (expect (error mock-error '((foo *) (foo)
+                             :expected-args-number 1 :actual-args-number 0))
          (mocklet (((foo *) => 'ok))
            (foo)))
  (expect (error mock-error '((foo 1 * 3) (foo 2 2 2)
@@ -489,6 +499,10 @@
                              :arg-index 0 :expected-arg 1 :actual-arg 2))
          (mocklet (((foo 1 **) => 'ok))
            (foo 2 2)))
+ (expect (error mock-error '((foo 1 **) (foo)
+                             :expected-args-number at-least 1 :actual-args-number 0))
+         (mocklet (((foo 1 **) => 'ok))
+           (foo)))
 
  (desc "matchers")
  (expect 'ok
