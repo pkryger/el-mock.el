@@ -141,8 +141,8 @@
               arg))
           args))
 
-(defun mock-verify-arg (expected actual funcsym expected-args actual-args)
-  "Verify that an argument's EXPECTED value is satisfied by the ACTUAL one.
+(defun mock-verify-arg (expected actual index funcsym expected-args actual-args)
+  "Verify that INDEX'th argument's EXPECTED value is satisfied by the ACTUAL one.
 If the verification fails `mock-error' is signaled with FUNCSYM and a
 list of EXPECTED-ARGS and ACTUAL-ARGS."
   (unless (eq expected '*)              ; `*' is wildcard argument
@@ -157,6 +157,7 @@ list of EXPECTED-ARGS and ACTUAL-ARGS."
         (unless (funcall matcher actual)
           (signal 'mock-error (append (list (cons funcsym (mock-filter-matcher-explainers expected-args))
                                             (cons funcsym actual-args)
+                                            :arg-index index
                                             :failing-matcher matcher
                                             :failing-arg actual)
                                       (when explainer
@@ -165,6 +166,7 @@ list of EXPECTED-ARGS and ACTUAL-ARGS."
         (unless (equal expected actual)
           (signal 'mock-error (list (cons funcsym (mock-filter-matcher-explainers expected-args))
                                     (cons funcsym actual-args)
+                                    :arg-index index
                                     :expected-arg expected
                                     :actual-arg actual))))))))
 
@@ -182,8 +184,9 @@ verification fails `mock-error' is signaled."
                                 (cons funcsym actual-args)))))
   (cl-loop for e in expected-args
            for a in actual-args
+           for i below (length expected-args)
            until (eq e '**)
-           do (mock-verify-arg e a funcsym expected-args actual-args))
+           do (mock-verify-arg e a i funcsym expected-args actual-args))
   (let ((actual-times (or (get funcsym 'mock-call-count) 0)))
     (and expected-times (/= expected-times actual-times)
          (signal 'mock-error (list (cons funcsym expected-args)
@@ -315,9 +318,10 @@ Example:
     (mock (g 3))
     (and (= (f 9 2) 3) (null (g 3))))     ; => t
   (with-mock
-    (mock (g 3))
-    (g 7))                                ; (mock-error (g 3)
-                                          ;             (g 7)
+    (mock (g 0 3))
+    (g 0 7))                              ; (mock-error (g 0 3)
+                                          ;             (g 0 7)
+                                          ;             :arg-index 1
                                           ;             :expected-arg 3
                                           ;             :actual-arg 7)
   (let ((x 13))
@@ -333,6 +337,7 @@ Example:
       (h 22)))
    ; (mock-error (h (~= #f(lambda (arg) [(x 13)] (<= x arg (+ x 2)))))
    ;             (h 22)
+   ;             :arg-index 0
    ;             :failing-matcher #f(lambda (arg) [(x 13)] (<= x arg (+ x 2)))
    ;             :failing-arg 22
    ;             :explanation \"Expected arg to be between 13 and 15 but got 22\")"

@@ -135,11 +135,13 @@
              (me 33))))
 
  (desc "unfulfilled mock")
- (expect (error mock-error '((foom 5) (foom 6) :expected-arg 5 :actual-arg 6))
+ (expect (error mock-error '((foom 5) (foom 6)
+                             :arg-index 0 :expected-arg 5 :actual-arg 6))
          (with-mock
            (mock (foom 5) => 2)
            (foom 6)))
- (expect (error mock-error '((bar 7) (bar 8) :expected-arg 7 :actual-arg 8))
+ (expect (error mock-error '((bar 7) (bar 8)
+                             :arg-index 0 :expected-arg 7 :actual-arg 8))
          (with-mock
            (mock (foo 5) => 2)
            (mock (bar 7) => 1)
@@ -152,7 +154,8 @@
            (mock (vi 5) => 2)
            (mock (foo 5) => 2)
            (vi 5)))
- (expect (error mock-error '((f 2) (f 4)  :expected-arg 2 :actual-arg 4))
+ (expect (error mock-error '((f 2) (f 4)
+                             :arg-index 0 :expected-arg 2 :actual-arg 4))
          (with-mock
            (mock (f 2))                 ;omission of return value
            (f 4)))
@@ -176,7 +179,8 @@
            (mock (f 1 2) => 3)
            (stub hoge => 5)
            (+ (f 1 2) (hoge 'a))))
- (expect (error mock-error '((f 1 2) (f 3 4) :expected-arg 1 :actual-arg 3))
+ (expect (error mock-error '((f 1 2) (f 3 4)
+                             :arg-index 0 :expected-arg 1 :actual-arg 3))
          (with-mock
            (mock (f 1 2) => 3)
            (stub hoge => 5)
@@ -370,7 +374,8 @@
            (mock (foo *) :times 2)
            (foo 1)
            'ok))
- (expect (error mock-error '((foo 1) (foo 2) :expected-arg 1 :actual-arg 2))
+ (expect (error mock-error '((foo 1) (foo 2)
+                             :arg-index 0 :expected-arg 1 :actual-arg 2))
          (with-mock
            (mock (foo 1) :times 2)
            (foo 2)
@@ -389,7 +394,8 @@
            (mock (foo *) => 2 :times 2)
            (foo 1)
            'ok))
- (expect (error mock-error '((foo 1) (foo 2) :expected-arg 1 :actual-arg 2))
+ (expect (error mock-error '((foo 1) (foo 2)
+                             :arg-index 0 :expected-arg 1 :actual-arg 2))
          (with-mock
            (mock (foo 1) => 2 :times 2)
            (foo 2)
@@ -424,10 +430,16 @@
          (with-mock
            (mock (foo *) => 'ok)
            (foo)))
- (expect (error mock-error '((foo 1 * 3) (foo 2 2 2) :expected-arg 1 :actual-arg 2))
+ (expect (error mock-error '((foo 1 * 3) (foo 2 2 2)
+                             :arg-index 0 :expected-arg 1 :actual-arg 2))
          (with-mock
            (mock (foo 1 * 3) => 'ok)
            (foo 2 2 2)))
+  (expect (error mock-error '((foo 1 * 3) (foo 1 2 2)
+                             :arg-index 2 :expected-arg 3 :actual-arg 2))
+         (with-mock
+           (mock (foo 1 * 3) => 'ok)
+           (foo 1 2 2)))
  (expect 'ok
          (with-mock
            (mock (foo **) => 'ok :times 3)
@@ -440,7 +452,8 @@
            (foo 1)
            (foo 1 2)
            (foo 1 'any 3)))
- (expect (error mock-error '((foo 1 **) (foo 2 2) :expected-arg 1 :actual-arg 2))
+ (expect (error mock-error '((foo 1 **) (foo 2 2)
+                             :arg-index 0 :expected-arg 1 :actual-arg 2))
          (with-mock
            (mock (foo 1 **) => 'ok)
            (foo 2 2)))
@@ -458,7 +471,8 @@
  (expect (error mock-error '((foo *) (foo)))
          (mocklet (((foo *) => 'ok))
            (foo)))
- (expect (error mock-error '((foo 1 * 3) (foo 2 2 2) :expected-arg 1 :actual-arg 2))
+ (expect (error mock-error '((foo 1 * 3) (foo 2 2 2)
+                             :arg-index 0 :expected-arg 1 :actual-arg 2))
          (mocklet (((foo 1 * 3) => 'ok))
            (foo 2 2 2)))
  (expect 'ok
@@ -471,7 +485,8 @@
            (foo 1)
            (foo 1 2)
            (foo 1 'any 3)))
- (expect (error mock-error '((foo 1 **) (foo 2 2) :expected-arg 1 :actual-arg 2))
+ (expect (error mock-error '((foo 1 **) (foo 2 2)
+                             :arg-index 0 :expected-arg 1 :actual-arg 2))
          (mocklet (((foo 1 **) => 'ok))
            (foo 2 2)))
 
@@ -529,25 +544,28 @@
 
  (expect (error mock-error '((foo (~= stringp))
                              (foo 13)
+                             :arg-index 0
                              :failing-matcher stringp
                              :failing-arg 13))
          (with-mock
            (mock (foo (~= #'stringp)) => 'ok)
            (foo 13)))
 
- (expect (error mock-error '((foo (~= stringp))
-                             (foo 14)
+ (expect (error mock-error '((foo 14 (~= stringp))
+                             (foo 14 14)
+                             :arg-index 1
                              :failing-matcher stringp
                              :failing-arg 14
                              :explanation "Expected a string but got 14"))
          (with-mock
-           (mock (foo (~= #'stringp (lambda (arg)
-                                      (format "Expected a string but got %S" arg))))
+           (mock (foo 14 (~= #'stringp (lambda (arg)
+                                         (format "Expected a string but got %S" arg))))
                  => 'ok)
-           (foo 14)))
+           (foo 14 14)))
 
  (expect (error mock-error '((foo (~= el-mock-test--never-match-1))
                              (foo 15)
+                             :arg-index 0
                              :failing-matcher el-mock-test--never-match-1
                              :failing-arg 15
                              :explanation "never-match-1 15"))
@@ -556,15 +574,16 @@
                  => 'ok)
            (foo 15)))
 
- (expect (error mock-error '((foo (~= el-mock-test--never-match-2))
-                             (foo 16)
+ (expect (error mock-error '((foo 16 (~= el-mock-test--never-match-2))
+                             (foo 16 16)
+                             :arg-index 1
                              :failing-matcher el-mock-test--never-match-2
                              :failing-arg 16
                              :explanation "never-match-2 16"))
          (with-mock
-           (mock (foo (~= #'el-mock-test--never-match-2))
+           (mock (foo 16 (~= #'el-mock-test--never-match-2))
                  => 'ok)
-           (foo 16)))
+           (foo 16 16)))
 
  (expect 'ok
          (mocklet (((foo (~= #'stringp)) => 'ok))
@@ -594,23 +613,26 @@
 
  (expect (error mock-error '((foo (~= stringp))
                              (foo 27)
+                             :arg-index 0
                              :failing-matcher stringp
                              :failing-arg 27))
          (mocklet (((foo (~= #'stringp)) => 'ok))
            (foo 27)))
 
- (expect (error mock-error '((foo (~= stringp))
-                             (foo 28)
+ (expect (error mock-error '((foo 28 (~= stringp))
+                             (foo 28 28)
+                             :arg-index 1
                              :failing-matcher stringp
                              :failing-arg 28
                              :explanation "Expected a string but got 28"))
-         (mocklet (((foo (~= #'stringp (lambda (arg)
-                                         (format "Expected a string but got %S" arg))))
+         (mocklet (((foo 28 (~= #'stringp (lambda (arg)
+                                            (format "Expected a string but got %S" arg))))
                     => 'ok))
-           (foo 28)))
+           (foo 28 28)))
 
  (expect (error mock-error '((foo (~= el-mock-test--never-match-1))
                              (foo 29)
+                             :arg-index 0
                              :failing-matcher el-mock-test--never-match-1
                              :failing-arg 29
                              :explanation "never-match-1 29"))
@@ -618,14 +640,15 @@
                     => 'ok))
            (foo 29)))
 
- (expect (error mock-error '((foo (~= el-mock-test--never-match-2))
-                             (foo 30)
+ (expect (error mock-error '((foo 30 (~= el-mock-test--never-match-2))
+                             (foo 30 30)
+                             :arg-index 1
                              :failing-matcher el-mock-test--never-match-2
                              :failing-arg 30
                              :explanation "never-match-2 30"))
-         (mocklet (((foo (~= #'el-mock-test--never-match-2))
+         (mocklet (((foo 30 (~= #'el-mock-test--never-match-2))
                     => 'ok))
-           (foo 30))))
+           (foo 30 30))))
 
 (defun el-mock-test--signal ()
   (error "Foo"))
