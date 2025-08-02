@@ -151,41 +151,69 @@
               arg))
           args))
 
+(defun mock--multi-argument-matcher-p (matcher)
+  "Return non-nil when MATCHER is a multi argument matcher."
+  (and (fboundp 'func-arity) ;; Since Emacs 26
+       (and (not (memq matcher '(* **)))
+            (let ((matcher (if (eq (car-safe matcher) '~=)
+                               (cadr matcher)
+                             matcher)))
+              (and  (functionp matcher)
+                    (equal (func-arity matcher)
+                           '(0 . many)))))))
+
 (defun mock-verify-arg (expected actual index funcsym expected-args actual-args)
   "Verify that INDEX'th argument's EXPECTED value is satisfied by the ACTUAL one.
-If the verification fails `mock-error' is signaled with FUNCSYM and a
-list of EXPECTED-ARGS and ACTUAL-ARGS."
+When EXPECTED is a multi argument matcher check that it matches all
+elements in ACTUAL-ARGS starting from INDEX.'  If the verification fails
+`mock-error' is signaled with FUNCSYM and a list of EXPECTED-ARGS and
+ACTUAL-ARGS."
   (unless (eq expected '*)              ; `*' is wildcard argument
     (cond
      ((eq (car-safe expected) '~=)
       (let* ((matcher (cadr expected))
+             (multi-argument (mock--multi-argument-matcher-p matcher))
              (explainer (or (caddr expected)
                             (and (symbolp matcher)
                                  (or
                                   (function-get matcher 'mock-explainer)
                                   (function-get matcher 'ert-explainer))))))
-        (unless (funcall matcher actual)
-          (signal 'mock-error (append (list (cons funcsym (mock-filter-matcher-explainers expected-args))
-                                            (cons funcsym actual-args)
-                                            :arg-index index
-                                            :failing-matcher matcher
-                                            :failing-arg actual)
-                                      (when explainer
-                                        (list :explanation (funcall explainer actual))))))))
+        (unless (if multi-argument
+                    (apply matcher actual)
+                  (funcall matcher actual))
+          (signal 'mock-error
+                  (append (list (cons funcsym (mock-filter-matcher-explainers
+                                               expected-args))
+                                (cons funcsym actual-args)
+                                :arg-index index)
+                          (when multi-argument  (list '...))
+                          (list
+                           :failing-matcher matcher
+                           :failing-arg)
+                          (if multi-argument actual (list actual))
+                          (when explainer
+                            (list :explanation
+                                  (if (mock--multi-argument-matcher-p explainer)
+                                      (apply explainer actual)
+                                    (funcall explainer actual)))))))))
      ((let ((expected (eval expected t)))
         (unless (equal expected actual)
-          (signal 'mock-error (list (cons funcsym (mock-filter-matcher-explainers expected-args))
-                                    (cons funcsym actual-args)
-                                    :arg-index index
-                                    :expected-arg expected
-                                    :actual-arg actual))))))))
-
+          (signal 'mock-error
+                  (list (cons funcsym (mock-filter-matcher-explainers
+                                       expected-args))
+                        (cons funcsym actual-args)
+                        :arg-index index
+                        :expected-arg expected
+                        :actual-arg actual))))))))
 
 (defun mock-verify-args (funcsym expected-args actual-args)
   "Verify that EXPECTED-ARGS are satisfied by ACTUAL-ARGS.
 Also verify that the FUNCSYM has been called EXPECTED-TIMES.  If
 verification fails `mock-error' is signaled."
-  (let ((at-least (cl-position '** expected-args))
+  (let* ((ma-index (cl-position-if #'mock--multi-argument-matcher-p
+                                   expected-args))
+         (at-least (or (cl-position '** expected-args)
+                       ma-index))
         (actual (length actual-args))
         (expected (length expected-args)))
     (unless (if at-least
@@ -199,12 +227,19 @@ verification fails `mock-error' is signaled."
                                (list 'at-least at-least)
                              (list expected))
                            (list
-                            :actual-args-number actual)))))
-  (cl-loop for e in expected-args
-           for a in actual-args
-           for i below (length expected-args)
-           until (eq e '**)
-           do (mock-verify-arg e a i funcsym expected-args actual-args)))
+                            :actual-args-number actual))))
+    (cl-loop for e in expected-args
+             for a in actual-args
+             for i below (length expected-args)
+             until (or (eq e '**)
+                       (and ma-index
+                            (mock--multi-argument-matcher-p e)))
+             do (mock-verify-arg e a i funcsym expected-args actual-args))
+    (when ma-index
+      (mock-verify-arg (nth ma-index expected-args)
+                       (nthcdr ma-index actual-args)
+                       ma-index
+                       funcsym expected-args actual-args))))
 
 ;;;; stub/mock provider
 (defun mock-protect (body-fn)
@@ -307,18 +342,20 @@ any number of arguments (including 0), effectively suppressing any further ARGS.
 
 ARGS that are of a from (~= MATCHER [EXPLAINER]) are matchers.  When a
 matcher is specified as an expected argument it is used to verify the
-actual value of the argument.  This is as opposed to comparing the
-actual and expected values of an argument with `equal'.  MATCHER is a
-function that is called with a single argument (the actual value of the
-argument).  A match is considered to be successful when MATCHER returns
-non-nil.  Otherwise `mock-error' occurs.  When the optional EXPLAINER is
-specified it is called with the same argument.  EXPLAINER and should
-return a string explaining why the match of the argument has failed.
-When EXPLAINER has not been specified and MATCHER is a symbol with a
-property `mock-explainer' (or `ert-explainer') the value of the property
-is used to explain the match failure.  Both MATCHER and EXPLAINER have
-their closures created when the mock is created to preserve lexical
-context.
+actual value of the argument or all remaining arguments or no arguments
+when there are no more arguments to verify.  This is as opposed to
+comparing the actual and expected values of an argument with `equal'.
+MATCHER is a function that is called with a single argument (the actual
+value of the argument) or a function that accepts 0 to `many'
+arguments (see `func-arity').  A match is considered to be successful
+when MATCHER returns non-nil.  Otherwise `mock-error' occurs.  When the
+optional EXPLAINER is specified it is called with the same arguments as
+matcher.  EXPLAINER and should return a string explaining why the match
+of arguments has failed.  When EXPLAINER has not been specified and
+MATCHER is a symbol with a property `mock-explainer' (or
+`ert-explainer') the value of the property is used to explain the match
+failure.  Both MATCHER and EXPLAINER have their closures created when
+the mock is created to preserve lexical context.
 
 ARGS that are not `*' are evaluated when the mock is verified,
 i.e. upon leaving the enclosing `with-mock' form.  ARGS are
@@ -339,8 +376,14 @@ Example:
                                           ;             :actual-arg 7)
   (let ((x 13))
     (with-mock
-      (mock (h (~= (lambda (arg) (<= x arg (+ x 2)))) (~= #\='stringp) => \='pass)
-      (h 14 \"test\")))                   ; => \='pass
+      (mock (h (~= (lambda (arg) (<= x arg (+ x 2)))) (~= #\='stringp)
+            => \='pass)
+      (mock (i (~= (lambda (&rest args)
+                     (if args (cl-every #\='symbolp args) t))))
+            => \='pass)
+      (list (h 14 \"test\")
+            (i)
+            (i \='any)))))                  ; => (\='pass \='pass \='pass)
   (let ((x 13))
     (with-mock
       (mock (h (~= (lambda (arg) (<= x arg (+ x 2)))
@@ -446,18 +489,20 @@ any number of arguments (including 0), effectively suppressing any further ARGS.
 
 ARGS that are of a from (~= MATCHER [EXPLAINER]) are matchers.  When a
 matcher is specified as an expected argument it is used to verify the
-actual value of the argument.  This is as opposed to comparing the
-actual and expected values of an argument with `equal'.  MATCHER is a
-function that is called with a single argument (the actual value of the
-argument).  A match is considered to be successful when MATCHER returns
-non-nil.  Otherwise `mock-error' occurs.  When the optional EXPLAINER is
-specified it is called with the same argument.  EXPLAINER and should
-return a string explaining why the match of the argument has failed.
-When EXPLAINER has not been specified and MATCHER is a symbol with a
-property `mock-explainer' (or `ert-explainer') the value of the property
-is used to explain the match failure.  Both MATCHER and EXPLAINER have
-their closures created when the mock is created to preserve lexical
-context.
+actual value of the argument or all remaining arguments or no arguments
+when there are no more arguments to verify.  This is as opposed to
+comparing the actual and expected values of an argument with `equal'.
+MATCHER is a function that is called with a single argument (the actual
+value of the argument) or a function that accepts 0 to `many'
+arguments (see `func-arity').  A match is considered to be successful
+when MATCHER returns non-nil.  Otherwise `mock-error' occurs.  When the
+optional EXPLAINER is specified it is called with the same arguments as
+matcher.  EXPLAINER and should return a string explaining why the match
+of arguments has failed.  When EXPLAINER has not been specified and
+MATCHER is a symbol with a property `mock-explainer' (or
+`ert-explainer') the value of the property is used to explain the match
+failure.  Both MATCHER and EXPLAINER have their closures created when
+the mock is created to preserve lexical context.
 
 ARGS that are neither `*' nor `**' are evaluated when the mock is
 verified, i.e. upon leaving the enclosing `with-mock' form.  ARGS are
@@ -475,7 +520,9 @@ Example:
       (and (null (mock-nil 1))    (= (mock-1 4) 1)
            (= (mock-2 1 2 3) 1)   (= (mock-2 \='any) 1)
            (= (mock-3 4) 1)
-           (null (stub-nil \\='any)) (= (stub-2) 2))) ; => t"
+           (null (stub-nil \\='any)) (= (stub-2) 2))) ; => t
+
+See `mock' for more examples."
   (declare (indent 1))
   `(with-mock
      ,(mock-parse-spec speclist)
