@@ -563,6 +563,25 @@
                    => 'ok)
              (foo 12))))
 
+ (when (fboundp 'func-arity) ;; Since Emacs 26
+   (expect 'ok
+           (with-mock
+             (mock (foo (~= (lambda (&rest args)
+                              (if args (cl-every #'symbolp args) t))))
+                   => 'ok :times 3)
+             (foo)
+             (foo 'any)
+             (foo 'any 'any)))
+
+   (expect 'ok
+           (with-mock
+             (mock (foo 1 (~= (lambda (&rest args)
+                                (if args (cl-every #'symbolp args) t))))
+                   => 'ok :times 3)
+             (foo 1)
+             (foo 1 'any)
+             (foo 1 'any 'any))))
+
  (expect (error mock-error '((foo (~= stringp))
                              (foo 13)
                              :arg-index 0
@@ -606,9 +625,38 @@
                  => 'ok)
            (foo 16 16)))
 
- (expect 'ok
-         (mocklet (((foo (~= #'stringp)) => 'ok))
-           (foo "is it still ok?")))
+ (when (fboundp 'func-arity) ;; Since Emacs 26
+   (expect (error mock-error '((foo (~= ignore)) (foo 17 17)
+                               :arg-index 0 ...
+                               :failing-matcher ignore
+                               :failing-arg 17 17))
+           (with-mock
+             (mock (foo (~= #'ignore)) => 'ok)
+             (foo 17 17)))
+
+   (expect (error mock-error '((foo 18 (~= ignore)) (foo 18)
+                               :arg-index 1 ...
+                               :failing-matcher ignore
+                               :failing-arg))
+           (with-mock
+             (mock (foo 18 (~= #'ignore)) => 'ok)
+             (foo 18)))
+
+   (expect (error mock-error '((foo 19 (~= ignore)) (foo 20 20)
+                               :arg-index 0 :expected-arg 19 :actual-arg 20))
+           (with-mock
+             (mock (foo 19 (~= #'ignore)) => 'ok)
+             (foo 20 20)))
+
+   (expect (error mock-error '((foo 1 (~= ignore)) (foo)
+                               :expected-args-number at-least 1
+                               :actual-args-number 0))
+           (mocklet (((foo 1 (~= #'ignore)) => 'ok))
+             (foo))))
+
+  (expect 'ok
+          (mocklet (((foo (~= #'stringp)) => 'ok))
+            (foo "is it still ok?")))
 
  (expect 'ok
          (mocklet (((foo (~= #'stringp #'null)
@@ -631,6 +679,23 @@
                                (lambda (arg) (< x arg (+ x 2))))))
                     => 'ok))
            (foo 26)))
+
+ (when (fboundp 'func-arity) ;; Since Emacs 26
+   (expect 'ok
+           (mocklet (((foo (~= (lambda (&rest args)
+                                 (if args (cl-every #'symbolp args) t))))
+                      => 'ok :times 3))
+             (foo)
+             (foo 'any2)
+             (foo 'any2 'any2)))
+
+   (expect 'ok
+           (mocklet (((foo 2 (~= (lambda (&rest args)
+                                   (if args (cl-every #'symbolp args) t))))
+                      => 'ok :times 3))
+             (foo 2)
+             (foo 2 'any2)
+             (foo 2 'any2 'any2))))
 
  (expect (error mock-error '((foo (~= stringp))
                              (foo 27)
@@ -669,7 +734,26 @@
                              :explanation "never-match-2 30"))
          (mocklet (((foo 30 (~= #'el-mock-test--never-match-2))
                     => 'ok))
-           (foo 30 30))))
+           (foo 30 30)))
+
+ (when (fboundp 'func-arity) ;; Since Emacs 26
+   (expect (error mock-error '((foo 31 (~= ignore)) (foo 32 32)
+                               :arg-index 0 :expected-arg 31 :actual-arg 32))
+           (mocklet (( (foo 31 (~= #'ignore)) => 'ok))
+             (foo 32 32)))
+
+   (expect (error mock-error '((foo 33 (~= ignore)) (foo 33)
+                               :arg-index 1 ...
+                               :failing-matcher ignore
+                               :failing-arg))
+           (mocklet (((foo 33 (~= #'ignore)) => 'ok))
+             (foo 33)))
+
+   (expect (error mock-error '((foo 33 (~= ignore)) (foo)
+                               :expected-args-number at-least 1
+                               :actual-args-number 0))
+           (mocklet (((foo 33 (~= #'ignore)) => 'ok))
+             (foo)))))
 
 (defun el-mock-test--signal ()
   "Signal error with \"Foo\"."
