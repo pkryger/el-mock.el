@@ -146,18 +146,25 @@
 (defun mock-filter-matcher-explainers (args)
   "Remove explainers from matchers in ARGS."
   (mapcar (lambda (arg)
-            (if (eq (car-safe arg) '~=)
+            (if (mock--matcher-form-p arg)
                 (list (car arg) (cadr arg))
               arg))
           args))
 
-(defun mock--multi-argument-matcher-p (matcher)
-  "Return non-nil when MATCHER is a multi argument matcher."
+(defun mock--matcher-form-p (obj)
+  "Return non-nil when OBJ is a matcher form.
+A matcher is detected when OBJ is of the form of (~= MATCHER [EXPLAINER])"
+  (and (eq (car-safe obj) '~=)
+       (<= 2 (length obj) 3)))
+
+(defun mock--multi-argument-matcher-p (obj)
+  "Return non-nil when OBJ is a multi argument matcher.
+An OBJ can be either of the form of (~= MATCHER [EXPLAINER]) or a function."
   (and (fboundp 'func-arity) ;; Since Emacs 26
-       (and (not (memq matcher '(* **)))
-            (let ((matcher (if (eq (car-safe matcher) '~=)
-                               (cadr matcher)
-                             matcher)))
+       (and (not (memq obj '(* **)))
+            (let ((matcher (if (mock--matcher-form-p obj)
+                               (cadr obj)
+                             obj)))
               (and  (functionp matcher)
                     (equal (func-arity matcher)
                            '(0 . many)))))))
@@ -170,7 +177,7 @@ elements in ACTUAL-ARGS starting from INDEX.'  If the verification fails
 ACTUAL-ARGS."
   (unless (eq expected '*)              ; `*' is wildcard argument
     (cond
-     ((eq (car-safe expected) '~=)
+     ((mock--matcher-form-p expected)
       (let* ((matcher (cadr expected))
              (multi-argument (mock--multi-argument-matcher-p matcher))
              (explainer (or (caddr expected)
@@ -405,7 +412,7 @@ Example:
          (matchers (apply #'append
                          (delq nil
                                (mapcar (lambda (arg)
-                                         (when (eq (car-safe arg) '~=)
+                                         (when (mock--matcher-form-p arg)
                                            (cdr arg)))
                                        (cdr func-spec)))))
          (matchers-var (make-symbol "matchers-var")))
@@ -414,7 +421,7 @@ Example:
        (let ((,matchers-var (list ,@matchers)))
          (mock/setup (cons ',(car func-spec)
                            (mapcar (lambda (arg)
-                                     (if (eq (car-safe arg) '~=)
+                                     (if (mock--matcher-form-p arg)
                                          (cons (car arg)
                                                (mapcar (lambda (_)
                                                          (pop ,matchers-var))
